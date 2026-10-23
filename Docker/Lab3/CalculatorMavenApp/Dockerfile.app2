@@ -1,0 +1,15 @@
+
+FROM eclipse-temurin:17-jre-alpine
+
+WORKDIR /app
+
+RUN addgroup -S appgroup && \
+    adduser -S -h /home/appuser -G appgroup appuser
+
+COPY --chown=appuser:appgroup target/calculator.jar /app/calculator.jar
+
+USER appuser
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "/app/calculator.jar"]

@@ -1,0 +1,23 @@
+
+FROM maven:3.9-eclipse-temurin-17-alpine
+
+WORKDIR /app
+
+COPY pom.xml .
+COPY src ./src
+
+RUN mvn clean package
+
+RUN addgroup -S appgroup && \
+    adduser -S -h /home/appuser -G appgroup appuser && \
+    mkdir -p /home/appuser/.m2 && \
+    chown -R appuser:appgroup /app /home/appuser
+
+ENV HOME=/home/appuser
+ENV MAVEN_CONFIG=/home/appuser/.m2
+
+USER appuser
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "target/calculator.jar"]
