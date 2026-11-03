@@ -1,0 +1,190 @@
+
+pipeline {
+    agent {
+        label 'ivolve-agent'
+    }
+
+    environment {
+        IMAGE_NAME = 'nadafouuad/demoapp'
+        IMAGE_TAG = "build-${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Clone Repository') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/Ibrahim-Adel15/DemoApp.git'
+            }
+        }
+
+        stage('Verify Source Code') {
+            steps {
+                sh '''
+                    echo "Checking source files..."
+                    test -f pom.xml
+                    test -f Dockerfile
+                    echo "Source code verified!"
+                '''
+            }
+        }
+
+        stage('Build Application') {
+            steps {
+                sh '''
+                    echo "Building DemoApp with Maven..."
+                    mvn clean package
+
+                    echo "Checking generated JAR..."
+                    ls -lh target/*.jar
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    echo "Building Docker image..."
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                '''
+            }
+        }
+
+        stage('Scan Docker Image') {
+            steps {
+                sh '''
+                    echo "Scanning Docker image with Trivy..."
+                    trivy image --timeout 15m --scanners vuln \
+                      --exit-code 0 ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Push to DockerHub') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+
+                        echo "$DOCKER_TOKEN" | docker login \
+                          -u "$DOCKER_USER" --password-stdin
+
+                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
+
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Delete Local Image') {
+            steps {
+                sh '''
+                    echo "Removing local Docker image..."
+                    docker rmi ${IMAGE_NAME}:${IMAGE_TAG}
+                    echo "Local image removed successfully!"
+                '''
+            }
+        }
+
+        stage('Test Kubernetes Access') {
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'ivolve-kubeconfig',
+                        variable: 'KUBECONFIG'
+                    )
+                ]) {
+                    sh '''
+                        echo "Testing Kubernetes authentication..."
+
+                        kubectl config current-context
+
+                        kubectl auth can-i create deployments -n ivolve
+                        kubectl auth can-i create services -n ivolve
+                    '''
+                }
+            }
+        }
+
+        stage('Get Deployment File') {
+            steps {
+                dir('ivolve-config') {
+                    git branch: 'main',
+                        url: 'https://github.com/Nadaahmedfouad/iVolve-Tasks.git'
+                }
+
+                sh '''
+                    echo "Checking deployment file..."
+                    test -f ivolve-config/Jenkins/Lab21/deployment.yaml
+                    echo "Deployment file found!"
+                '''
+            }
+        }
+
+        stage('Update Deployment File') {
+            steps {
+                sh '''
+                    echo "Updating Kubernetes deployment image..."
+
+                    sed -i \
+                      "s|image: nadafouuad/demoapp:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" \
+                      ivolve-config/Jenkins/Lab21/deployment.yaml
+
+                    echo "Updated image:"
+                    grep "image:" ivolve-config/Jenkins/Lab21/deployment.yaml
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'ivolve-kubeconfig',
+                        variable: 'KUBECONFIG'
+                    )
+                ]) {
+                    sh '''
+                        echo "Deploying DemoApp to Kubernetes..."
+
+                        kubectl apply -f \
+                          ivolve-config/Jenkins/Lab21/deployment.yaml \
+                          -n ivolve
+
+                        echo "Checking deployment rollout..."
+
+                        kubectl rollout status deployment/demoapp \
+                          -n ivolve --timeout=180s
+
+                        echo "Deployment successful!"
+
+                        kubectl get deployment demoapp -n ivolve
+                        kubectl get pods -n ivolve -l app=demoapp
+                        kubectl get svc demoapp-service -n ivolve
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline execution finished.'
+        }
+
+        success {
+            echo "Pipeline succeeded! Image ${IMAGE_NAME}:${IMAGE_TAG} deployed successfully."
+        }
+
+        failure {
+            echo 'Pipeline failed. Check the console output.'
+        }
+    }
+}
