@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demoapp
+  namespace: ivolve
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demoapp
+  template:
+    metadata:
+      labels:
+        app: demoapp
+    spec:
+      containers:
+        - name: demoapp
+          image: nadafouuad/demoapp:lab21
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demoapp-service
+  namespace: ivolve
+spec:
+  selector:
+    app: demoapp
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
