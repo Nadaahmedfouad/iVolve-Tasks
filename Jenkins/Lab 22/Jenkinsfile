@@ -1,0 +1,85 @@
+
+@Library('shared-lib') _
+
+pipeline {
+    agent {
+        label 'ivolve-agent'
+    }
+
+    environment {
+        IMAGE_NAME = 'nadafouuad/demoapp'
+        IMAGE_TAG = "build-${BUILD_NUMBER}"
+        DEPLOYMENT_FILE = 'ivolve-config/Jenkins/Lab21/deployment.yaml'
+    }
+
+    stages {
+
+        stage('Clone Repository') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/Ibrahim-Adel15/DemoApp.git'
+            }
+        }
+
+        stage('Verify Source Code') {
+            steps {
+                sh '''
+                    test -f pom.xml
+                    test -f Dockerfile
+                    echo "Source code verified!"
+                '''
+            }
+        }
+
+        stage('Build Application') {
+            steps {
+                script {
+                    buildApp()
+                }
+            }
+        }
+
+        stage('Build Docker Image and Push') {
+            steps {
+                script {
+                    buildAndPushImage(env.IMAGE_NAME, env.IMAGE_TAG)
+                }
+            }
+        }
+
+        stage('Get Deployment File') {
+            steps {
+                dir('ivolve-config') {
+                    git branch: 'main',
+                        url: 'https://github.com/Nadaahmedfouad/iVolve-Tasks.git'
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    deployToK8s(
+                        env.DEPLOYMENT_FILE,
+                        env.IMAGE_NAME,
+                        env.IMAGE_TAG
+                    )
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline execution finished.'
+        }
+
+        success {
+            echo "Pipeline succeeded! Image ${IMAGE_NAME}:${IMAGE_TAG} deployed successfully."
+        }
+
+        failure {
+            echo 'Pipeline failed. Check the console output.'
+        }
+    }
+}
