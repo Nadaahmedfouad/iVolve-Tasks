@@ -1,0 +1,17 @@
+---
+plugin: amazon.aws.aws_ec2
+
+regions:
+  - eu-north-1
+
+profile: ansible-lab
+
+filters:
+  tag:server: ivolve
+  instance-state-name: running
+
+hostnames:
+  - ip-address
+
+groups:
+  ivolve_servers: true
